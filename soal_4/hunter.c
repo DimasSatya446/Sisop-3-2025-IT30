@@ -5,7 +5,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <unistd.h>
-#include <pthread.h>  // ✅ Tambahan penting
+#include <pthread.h> 
 
 #define MAX_HUNTERS 50
 #define MAX_DUNGEONS 50
