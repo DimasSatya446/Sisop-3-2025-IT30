@@ -1,8 +1,0 @@
-[Server][2025-05-03 23:28:44]: [INFO] Server started (daemon mode)
-[Server][2025-05-03 23:28:44]: [INFO] Listening on port 8080...
-[Server][2025-05-03 23:29:08]: [INFO] Client connected
-[Server][2025-05-03 23:29:08]: [UPLOAD] Menerima perintah UPLOAD
-[Server][2025-05-03 23:29:08]: [UPLOAD] UPLOAD: File /home/seribu_man/SISOP_3/soal_1/server/database/20250503_232908.jpeg (original: input_3.txt) disimpan
-[Server][2025-05-03 23:29:16]: [INFO] Client connected
-[Server][2025-05-03 23:29:16]: [DOWNLOAD] Menerima perintah DOWNLOAD
-[Server][2025-05-03 23:29:16]: [DOWNLOAD] DOWNLOAD: File 20250503_232908.jpeg berhasil dikirim
