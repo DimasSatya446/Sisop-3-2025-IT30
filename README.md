@@ -264,6 +264,307 @@ NOTE:
 
 ---
 ## soal_2
+### Perusahaan Ekspedisi *Rush Go*
+---
+### Problem:
+
+> **RushGo ingin memberikan layanan ekspedisi terbaik dengan 2 pilihan, Express (super cepat) dan Reguler (standar). Namun, pesanan yang masuk sangat banyak! Mereka butuh sebuah sistem otomatisasi pengiriman, agar agen-agen mereka tidak kewalahan menangani pesanan yang terus berdatangan.**
+
+**Terdiri dari 2 sistem utama:**
+	**>** `delivery_agent.c` untuk agen otomatis pengantar express.
+	**>** `dispatcher.c` untuk pengiriman dan monitoring pesanan oleh user.
+
+- **Mengunduh dan menyimpan *[delivery order](https://drive.google.com/file/d/1OJfRuLgsBnIBWtdRXbRsD2sG6NhMKOg9/view)* ke dalam *Shared Memory*, serta keseluruhan pengelolaan *delivery order* dengan penggunaan *Shared Memory* secara bersama.**
+- **Pengiriman tipe *express* dengan 3 agen pengiriman utama: A, B, dan C, yang berjalan di tiap *thread* terpisah dan secara otomatis tanpa intervensi *user* pada datanya pada *Shared Memory* dalam `./delivery_agent`.**
+- **Pengiriman tipe *reguler* dengan pengiriman secara manual dilakukan oleh user  dari `./dispatcher`, serta pengiriman dilaksanakan oleh `Agent[User]`.**
+- **Program akan mencatat *log* dalam `~/delivery.log` pada kedua tipe pengiriman (*express* dan *reguler*) dengan format yang telah ditentukan setelah pengiriman sukses dilakukan.**
+- **Program `./dispatcher` dapat mengecek status setiap pengiriman.**
+- **Program `./dispatcher` dapat memperlihatkan keseluruhan pengiriman dalam format list disertai nama dan statusnya.**
+
+---
+
+### Code's Key Components
+> **`delivery_agent.c`**
+
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <string.h>
+    #include <unistd.h>
+    #include <pthread.h>
+    #include <time.h>
+    #include <sys/ipc.h>
+    #include <sys/shm.h>
+    
+    #define SHM_KEY 1234
+    #define MAX_ORDERS 100
+    #define NAME_LENGTH 64
+    #define ADDR_LENGTH 128
+    
+    typedef enum { PENDING, DELIVERED } Status;
+    typedef enum { EXPRESS, REGULER } Type;
+    
+    typedef struct {
+        char name[NAME_LENGTH];
+        char address[ADDR_LENGTH];
+        Type type;
+        Status status;
+        char agent[NAME_LENGTH];
+    } Order;
+    
+    typedef struct {
+        Order orders[MAX_ORDERS];
+        int count;
+    } SharedData;
+
+Menjadi *library*,*struct*, *define*, dan konfigurasi *shared memory* yang akan digunakan sebagai struktur data dalam data *delivery_order* pada sistem.
+
+        void log_delivery(const char *agent, const Order *o) {
+            FILE *log = fopen("delivery.log", "a");
+            time_t now = time(NULL);
+            [...]
+                fclose(log);
+	    }
+Berfungsi dalam *logging* pada setiap pengiriman, khususnya yang bertipe *express* (pada program `delivery_agent.c`) dengan:
+
+-    Membuka file `delivery.log` (mode append).
+    
+-   Mendapatkan waktu lokal saat ini.
+    
+-   Menuliskan log dalam format:  
+    `[dd/mm/yyyy hh:mm:ss] [AGENT X (pada kasus ini A/B/C)] Express package delivered to [Nama] in [Alamat]`
+
+```
+    void *agent_thread(void *arg) {
+        char *agent_name = (char *)arg;
+    
+        while (1) {
+            for (int i = 0; i < data->count; ++i) {
+                if (data->orders[i].type == EXPRESS && data->orders[i].status == PENDING) {
+                [...]
+        return NULL;
+    }
+```
+Berfungsi sebagai *thread* masing-masing agent (A/B/C) dengan mekanisme sebagai berikut:
+-   `arg` adalah pointer ke nama agen (`A`, `B`, `C`).
+    
+-   Infinite loop:
+    
+    -   Iterasi semua order (`data->orders`).
+        
+    -   Jika ketemu order dengan:
+        
+        -   `type == EXPRESS`
+            
+        -   `status == PENDING`
+            
+    -   Maka:
+        
+        -   ubah status menjadi `DELIVERED`
+            
+        -   simpan nama agen
+            
+        -   log ke file
+            
+        -   `sleep(1)` untuk simulasi antar
+            
+    -   `sleep(3)` setelah 1 iterasi penuh untuk efisiensi CPU.
+
+```
+int main() {
+    int shmid = shmget(SHM_KEY, sizeof(SharedData), IPC_CREAT | 0666);
+    if (shmid == -1) {
+        perror("shmget");
+        return 1;
+    }
+
+    data = (SharedData *)shmat(shmid, NULL, 0);
+    if (data == (void *) -1) {
+        perror("shmat");
+        return 1;
+    }
+    [...]
+        shmdt(data);
+    return 0;
+}
+```
+Berfungsi sebagai fungsi utama dalam code yang secara singkat bekerja dengan mekanisme sebagai berikut:
+
+-   *Shared memory* yang berisi data *delivery_order* diakses dan dibaca.
+    
+-   3 thread agen dibuat: `"A"`, `"B"`, `"C"`.
+    
+-   Tiap agen:
+    -   Scan daftar order.
+    -   Kirim semua pengiriman bertipe `[EXPRESS-PENDING]`.
+    -   Mencatat Log hasil pengiriman yang sukses dilaksanakan.
+    -   Ulangi terus selamanya.
+
+> **`dispatcher.c`**
+```
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <string.h>
+    #include <unistd.h>
+    #include <pthread.h>
+    #include <time.h>
+    #include <sys/ipc.h>
+    #include <sys/shm.h>
+    
+    #define SHM_KEY 1234
+    #define MAX_ORDERS 100
+	
+	[...]
+    
+    typedef struct {
+        Order orders[MAX_ORDERS];
+        int count;
+    } SharedData;
+```
+Sama seperti program sebelumnya, yaitu menjadi *library*,*struct*, *define*, dan konfigurasi *shared memory* yang akan digunakan sebagai struktur data dalam data *delivery_order* pada sistem.
+
+```
+void download_csv_if_needed() {
+    if (access("delivery_order.csv", F_OK) == -1) {
+        printf("Downloading delivery_order.csv...\n");
+        system("wget -q -O delivery_order.csv \"https://drive.google.com/uc?export=download&id=1OJfRuLgsBnIBWtdRXbRsD2sG6NhMKOg9\"");
+        printf("Download completed.\n");
+    }
+}
+```
+Berfungsi dalam akan mengecek jika file *delivery_order.csv* sudah ada pada progam dan mendownload file *delivery_order.csv* jika belum ada sebagai source data untuk setiap pengiriman.
+
+```
+void load_orders_from_csv(SharedData *data) {
+    FILE *fp = fopen("delivery_order.csv", "r");
+    if (!fp) {
+        perror("fopen");
+        exit(EXIT_FAILURE);
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        char *name = strtok(line, ",");
+        char *addr = strtok(NULL, ",");
+        char *type = strtok(NULL, "\n");
+    [...]
+    
+        }
+    fclose(fp);
+}
+```
+Berfungsi dalam mengakses data *delivery_order* dari *shared memory* dengan mekanisme sebagai berikut:
+-   Membuka `delivery_order.csv`.
+    
+-   Membaca file baris per baris dengan batasan;
+```
+char *name = strtok(line, ","); 
+char *addr = strtok(NULL, ","); 
+char *type = strtok(NULL, "\n");
+```
+-   Mengisi elemen `Order` berdasarkan data yang dibaca.
+    
+-   Jika `type` mengandung "Express", maka `o->type = EXPRESS`.
+
+```
+void log_delivery(const char *agent, const Order *o, const char *type) {
+    FILE *log = fopen("delivery.log", "a");
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    fprintf(log, "[%02d/%02d/%d %02d:%02d:%02d] [AGENT %s] %s package delivered to %s in %s\n",
+    [...]
+    
+    fclose(log);
+}
+```
+Sama dengan fungsi pada program sebelumnya dengan fungsi dalam *logging* pada setiap pengiriman, khususnya yang bertipe *reguler* (pada program `dispatcher.c`) dengan:
+
+-    Membuka file `delivery.log` (mode append).
+    
+-   Mendapatkan waktu lokal saat ini.
+    
+-   Menuliskan log dalam format:  
+    `[dd/mm/yyyy hh:mm:ss] [AGENT X (pada kasus ini A/B/C)] Express package delivered to [Nama] in [Alamat]`
+
+```
+void deliver_reguler(SharedData *data, const char *target_name) {
+    for (int i = 0; i < data->count; ++i) {
+        if (data->orders[i].type == REGULER &&
+            data->orders[i].status == PENDING &&
+            strcmp(data->orders[i].name, target_name) == 0) {
+            [...]
+            
+    printf("Order tidak ditemukan atau telah dikirim\n");
+}
+```
+Berfungsi dalam mengirim pengiriman bertipe *Reguler* secara manual, dengan mekanisme sebagai berikut:
+-   Mencari order dengan:
+    
+    -   Bertipe `REGULER` dengan status `PENDING`
+        
+    -   Nama pelanggan sesuai `target_name`
+        
+-   Jika ketemu:
+    
+    -   Ubah status jadi `DELIVERED`
+        
+    -   Isi field `agent` dengan `target_name` (simbolis sebagai pengantar)
+        
+    -   Mencatat Log pengiriman setelah sukses dikirim
+        
+-   Jika tidak:
+    
+    -   Cetak pesan error
+
+```
+void check_status(SharedData *data, const char *target_name) {
+    for (int i = 0; i < data->count; ++i) {
+        if (strcmp(data->orders[i].name, target_name) == 0) {
+            if (data->orders[i].status == DELIVERED)
+            [...]
+            
+    }
+    printf("Order not found.\n");
+}
+```
+Berfungsi dalam mengecek *status* setiap pengiriman, dengan mekanisme sebagai berikut:
+
+-   Mencari pesanan dengan nama `target_name`.
+    
+-   Jika ketemu, dengan format yang telah diberikan:
+    
+    -   Status `DELIVERED` → tampilkan nama agen
+        
+    -   Status `PENDING` → tampilkan belum terkirim
+        
+-   Jika tidak ada → tampilkan pengiriman tidak ditemukan
+
+```
+void list_all(SharedData *data) {
+    for (int i = 0; i < data->count; ++i) {
+        printf("Order %d: %s - %s\n", i+1, data->orders[i].name,
+            data->orders[i].status == DELIVERED ? "Delivered" : "Pending");
+    }
+}
+```
+Berfungsi untuk menampilkan keseluruhan pesanan dengan statusnya dengan melalui keseluruhan data pada *shared memory*.
+
+```
+
+```
+Berfungsi sebagai fungsi/program utama dalam `dispatcher.c`, dengan mekanisme sebagai berikut:
+
+-   Akses shared memory → `shmget` & `shmat`
+-   Panggil `download_csv_if_needed()` → Mengunduh file CSV jika belum ada.
+-   Jika `data->count == 0` → muat data dari CSV untuk data *`delivery_order`*.
+-   Proses argumen:
+    -   `-deliver [nama]` → Mengantar order bertipe *Reguler*.
+ 
+    -   `-status [nama]` → Mengecek status suatu pengiriman.
+
+    -   `-list` → Menampilkan semua order pengiriman yang ada.
+-   Jika salah argumen → tampilkan format usage.
+    
+-   Detach shared memory (`shmdt`).
 
 ---
 ## soal_3
