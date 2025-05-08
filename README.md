@@ -1446,7 +1446,550 @@ d. Weapon Shop
 
 ---
 ## soal_4
-a
+### Tiba-Tiba Jadi Admin Sistem `(Warnet)` Setelah Reinkarnasi?! 📶🖥️ Dari Shadow Monarch ke Admin Sistem Hunter Dunia Lain!
+---
+### Problem:
+
+> **[...] . Beruntungnya, Sung Jin Woo pun mengalami reinkarnasi dan sekarang bekerja sebagai seorang admin. Uniknya, pekerjaan ini mempunyai sebuah sistem yang bisa melakukan tracking pada seluruh aktivitas dan keadaan seseorang. Sayangnya, model yang diberikan oleh Bos-nya sudah sangat tua sehingga program tersebut harus dimodifikasi agar tidak ketinggalan zaman, dengan spesifikasi..**
+
+---
+> **Sebagai efisiensi line, pada soal ini penjelasan `source code` pada beberapa *line code* disingkat dengan `[...]`, sehingga tidak memakan banyak line yang ada. Kejelasan line yang sudah pasti / FIX telah di bentuk dan dirancang pada folder soal yang sudah disediakan / ada. Terimakasih 🙇‍♂️🙏**
+---
+
+### Code's Key Components
+> **`system.c`**
+```
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <unistd.h>
+#include <time.h>
+#include <pthread.h>
+
+#define MAX_HUNTERS 50
+#define MAX_DUNGEONS 50
+
+struct Hunter {
+    char username[50];
+    int level;
+    int exp;
+    int atk;
+    int hp;
+    int def;
+    int banned;
+    key_t shm_key;
+};
+
+struct Dungeon {
+    char name[50];
+    int min_level;
+    int exp;
+    int atk;
+    int hp;
+    int def;
+    key_t shm_key;
+};
+
+struct SystemData {
+    struct Hunter hunters[MAX_HUNTERS];
+    int num_hunters;
+    struct Dungeon dungeons[MAX_DUNGEONS];
+    int num_dungeons;
+    int current_notification_index;
+};
+
+key_t get_system_key() {
+    return ftok("/tmp", 'S');
+}
+```
+Bekerja sebagai struktur data dan konstanta pada data dalam sistem, dengan struktur data utama yaitu: 
+-   `Hunter`: data pemain seperti `username`, `level`, `statistik`, dan `shm_key` (key shared memory hunter).
+    
+-   `Dungeon`: informasi dungeon seperti `nama`, level minimum, statistik hadiah, dan `shm_key` (key shared memory dungeon).
+    
+-   `SystemData`: shared memory pusat untuk daftar semua hunter dan dungeon.
+
+Serta konfigurasi *shared memory* dengan key shared memory utama sistem.
+
+```
+const char *dungeon_names[] = {
+    "Double Dungeon", "Demon Castle", "Pyramid Dungeon", "Red Gate Dungeon",
+    [...]
+    "D-Rank Dungeon", "Gwanak Mountain Dungeon", "Hapjeong Subway Station Dungeon"
+};
+```
+Berfungsi sebagai *Array string* sebagai pilihan nama dungeon random.
+
+```
+void display_all_hunters(struct SystemData *data) {
+    printf("=== LIST HUNTERS ===\n");
+    for (int i = 0; i < data->num_hunters; ) {
+        key_t h_key = data->hunters[i].shm_key;
+        int h_shmid = shmget(h_key, sizeof(struct Hunter), 0666);
+        if (h_shmid == -1) {
+        [...]
+        
+        shmdt(h_ptr);
+        i++;
+    }    
+}
+```
+Berfungsi untuk menampilkan seluruh hunter di sistem, dengan mekanisme utama sebagai berikut:
+-   *Looping* dan membaca shared memory seluruh hunter melalui `shmget()` dan `shmat()`.
+    
+-   Menampilkan data statistik dan status setiap hunter.
+
+```
+void display_all_dungeons(struct SystemData *data) {
+    printf("=== LIST DUNGEONS ===\n");
+    for (int i = 0; i < data->num_dungeons; i++) {
+        struct Dungeon *d = &data->dungeons[i];
+        int d_shmid = shmget(d->shm_key, sizeof(struct Dungeon), 0666);
+        [...]
+        
+        shmdt(d_ptr);
+    }
+}
+```
+Berfungsi untuk menampilkan seluruh dungeon yang ada di sistem, dengan mekanisme utama yang mirip dengan `display_all_hunters` yaitu sebagai berikut:
+Menampilkan semua dungeon yang aktif:
+
+-   Buka shared memory dungeon satu per satu melalui `shmget()` dan `shmat()`.
+    
+-   Tampilkan informasi dungeon.
+
+```
+void generate_dungeon(struct SystemData *data) {
+    if (data->num_dungeons >= MAX_DUNGEONS) {
+        printf("Dungeon limit reached.\n");
+        return;
+    }
+
+    struct Dungeon new_dungeon;
+    srand(time(NULL) + rand()); // randomisasi lebih baik
+
+    // Set nama dan statistik dungeon
+    strcpy(new_dungeon.name, dungeon_names[rand() % 11]);
+    new_dungeon.min_level = 1 + rand() % 5;
+    new_dungeon.exp = 150 + rand() % 151;
+    new_dungeon.atk = 100 + rand() % 51;
+    new_dungeon.hp  = 50 + rand() % 51;
+    new_dungeon.def = 25 + rand() % 26;
+    [...]
+
+    // Output informasi dungeon yang dibuat
+    printf("Dungeon '%s' created! (Min Level: %d)\n", new_dungeon.name, new_dungeon.min_level);
+}
+```
+Berfungsi dalam membuat dungeon baru, dengan mekanisme sebagai berikut:
+-   Randomisasi nama dan statistik dungeon dari array `dungeon_names[]`.
+    
+-   Membuat `shm_key` unik dengan `ftok`.
+    
+-   Buat *shared memory* pada *shared memory dungeon* baru dan simpan objek `Dungeon` ke sana.
+    
+-   Tambahkan data dungeon *shm* ke `SystemData`.
+
+```
+void ban_hunter(struct SystemData *data) {
+    char name[50];
+    printf("Masukkan username hunter yang ingin di-ban/unban: ");
+    scanf("%s", name);
+    getchar();
+
+    for (int i = 0; i < data->num_hunters; i++) {
+        if (strcmp(data->hunters[i].username, name) == 0) {
+        [...]
+
+    printf("Hunter tidak ditemukan.\n");
+}
+```
+Berfungsi dalam menjadi fitur untuk ban/un-ban hunter tertentu, dengan mekanisme utama sebagai berikut:
+-   Menemukan hunter dengan `strcmp(username)`.
+    
+-   Toggle status `banned` begitupun sebaliknya untuk `un-banned`.
+    
+-   Update ke `SystemData` (utama) dan Shared memory hunter (akses langsung via `shmat()`).
+
+```
+void reset_hunter(struct SystemData *data) {
+    char name[50];
+    printf("Masukkan username hunter yang ingin di-reset: ");
+    scanf("%s", name);
+    getchar();
+
+    for (int i = 0; i < data->num_hunters; i++) {
+        if (strcmp(data->hunters[i].username, name) == 0) {
+        [...]
+
+    printf("Hunter tidak ditemukan.\n");
+}
+```
+Berfungsi dalam menjadi fitur untuk Mengembalikan hunter ke status awal, dengan mekanisme sebagai berikut:
+
+-   Mencari nama Hunter
+-   Mengatur semua stat hunter kembali ke default:
+    
+    -   Level = 1, EXP = 0, ATK = 10, HP = 100, DEF = 5.
+        
+-   Update ke `SystemData` dan *shared memory hunter*.
+
+```
+int main() {
+    key_t sys_key = get_system_key();
+    shmid = shmget(sys_key, sizeof(struct SystemData), IPC_CREAT | 0666);
+    system_data = (struct SystemData *)shmat(shmid, NULL, 0);
+
+    if (system_data->num_hunters == 0 && system_data->num_dungeons == 0) {
+        system_data->num_hunters = 0;
+        system_data->num_dungeons = 0;
+    }
+
+    int choice;
+    do {
+        printf("\n=== SYSTEM MENU ===\n");
+        printf("1. Lihat semua Hunter\n");
+        printf("2. Lihat semua Dungeon\n");
+        printf("3. Generate Dungeon\n");
+        printf("4. Ban Hunter\n");
+        printf("5. Reset Hunter\n");
+        printf("6. Exit\n");
+        printf(">> ");
+        scanf("%d", &choice);
+        getchar();
+        [...]
+
+    shmdt(system_data);
+    return 0;
+}
+```
+Berfungsi sebagai program utama pada kode `system.c` yang mengatur keseluruhan fitur dan lainnya pada sistem untuk admin, dengan mekanisme utama sebagai berikut:
+
+- Inisialisasi Shared Memory dan alokasi memori data-datanya serta menginisialisasi data-data kosong (hunter dan dungeon)
+
+- Membuat menu admin pada `./system` dengan opsi:
+	-    Lihat semua hunter
+	-   Lihat semua dungeon
+	-   Generate dungeon baru
+	-   Ban/unban hunter
+	-   Reset hunter
+	-   Exit & bersihkan semua shared memory
+
+Serta berfungsi sebagai dalam menyediakan antarmuka admin (melalui terminal) hingga Mengelola validitas data melalui `shmget`, `shmdt`, dan `shmctl`.
+
+> **`hunter.c`**
+```
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/stat.h>
+[...]
+
+#define MAX_HUNTERS 50
+#define MAX_DUNGEONS 50
+
+struct Hunter {
+	[...]
+};
+
+struct Dungeon {
+	[...]
+};
+
+struct SystemData {
+	[...]
+};
+
+key_t get_system_key() {
+    return ftok("/tmp", 'S');
+```
+Sama seperti program `system.c`, `hunter.c` juga menginisiasi struktur data dan konstanta pada data dalam sistem, dengan struktur data utama yang sama seperti `system.c` yaitu: 
+-   `Hunter`: data pemain seperti `username`, `level`, `statistik`, dan `shm_key` (key shared memory hunter).
+    
+-   `Dungeon`: informasi dungeon seperti `nama`, level minimum, statistik hadiah, dan `shm_key` (key shared memory dungeon).
+    
+-   `SystemData`: shared memory pusat untuk daftar semua hunter dan dungeon.
+
+Serta konfigurasi *shared memory* pada `hunter,c` dengan key shared memory utama sistem didalam `system.c`.
+
+```
+struct Hunter* register_hunter(struct SystemData *data, char *username) {
+    if (data->num_hunters >= MAX_HUNTERS) return NULL;
+
+    for (int i = 0; i < data->num_hunters; i++) {
+        if (strcmp(data->hunters[i].username, username) == 0) return NULL;
+    }
+	[...]
+
+    printf("Hunter %s registered.\n", username);
+    return (struct Hunter *)shmat(temp_shmid, NULL, 0);
+}
+```
+Berfungsi sebagai fitur *Register* pada sistem `hunter.c` untuk mendaftarkan dan menginsiasi *key shm*untuk *hunter*, dengan mekanisme utama sebagai berikut:
+
+-   Memvalidasi apakah jumlah hunter belum penuh.
+    
+-   Mengecek apakah username sudah digunakan.
+    
+-   Menginisialisasi data hunter baru dengan [*default stat*].
+    
+-   Generate shm_key unik dan mengalokasikan shared memory serta key-nya untuk hunter baru (`shm_key` dan ukuran `struct Hunter`).
+    
+-   Simpan data hunter baru ke shared memory.
+    
+-   Menambahkan data hunter baru ke `SystemData`.
+
+```
+struct Hunter* login(struct SystemData *data, char *username) {
+    for (int i = 0; i < data->num_hunters; i++) {
+        if (strcmp(data->hunters[i].username, username) == 0) {
+            int h_shmid = shmget(data->hunters[i].shm_key, sizeof(struct Hunter), 0666);
+            [...]
+
+    }
+    return NULL;
+}
+```
+Berfungsi sebagai fitur *login* untuk para *hunter* yang sudah memiliki akun / key / shm nama *hunter* yang sudah dinisiasi sebelumnya, dengan mekanisme utama sebagai berikut:
+
+-   Mencari username di `data->hunters`.
+
+-   Mengaambil pointer ke shared memory hunter dan return-nya sebagai akun hunter-nya.
+
+Setelah akun telah diinisiasi melalui *register* / *login*, hunter dapt mengakses menu utama hunter yang dapat mengatur fitur-fitur utama hunter, yaitu sebagai berikut.
+```
+void list_available_dungeons(struct SystemData *data, struct Hunter *hunter) {
+    if (hunter->banned) {
+        printf("You are banned from performing this action.\n");
+        return;
+    }
+
+    printf("=== DUNGEONS AVAILABLE FOR YOU ===\n");
+    for (int i = 0; i < data->num_dungeons; i++) {
+        struct Dungeon *d = &data->dungeons[i];
+	    [...]
+
+        }
+        shmdt(d_ptr);
+    }
+}
+```
+Berfungsi sebagai salah satu fitur utama hunter yang memperlihatkan keseluruhan dungeon yang ada bagi hunter bisa *raid* sesuai dengan level-nya, dengan mekanisme utama sebagai berikut:
+
+-   Cek apakah hunter sedang _banned_.
+    
+-   Menampilkan dungeon yang sesuai `min_level` pemain.
+    
+-   Membuka shared memory tiap dungeon satu-satu dan hanya  dungeon yang sesuai level yang ditampilkan dengan status dungeonnya.
+
+```
+void raid_dungeon(struct SystemData *data, struct Hunter *hunter) {
+    if (hunter->banned) {
+        printf("You are banned from performing this action.\n");
+        return;
+    }
+
+    printf("\n=== RAIDABLE DUNGEONS ===\n");
+    int available[MAX_DUNGEONS];
+    int count = 0;
+
+    for (int i = 0; i < data->num_dungeons; i++) {
+        struct Dungeon *d = &data->dungeons[i];
+        int d_shmid = shmget(d->shm_key, sizeof(struct Dungeon), 0666);
+        [...]
+
+    printf("\nPress enter to continue...");
+    getchar();
+}
+```
+Berfungsi sebagai salah satu fitur utama hunter yang memperlihatkan keseluruhan dungeon yang ada bagi hunter bisa *raid* sesuai dengan level-nya dan memperbolehkan hunter untuk *raid* suatu dungeon sesuai dengan level-nya, dengan mekanisme utama sebagai berikut:
+
+-   Cek apakah hunter sedang _banned_.
+    
+-   Tampilkan dungeon yang bisa di*raid* dan pilih dungeon yang akan di*raid*.
+    
+-   Tambahkan semua stat dan EXP ke hunter dari stat dungeon yang telah di*raid*.
+    
+-   Jika EXP ≥ 500, hunter akan level up dan kembali ke EXP = 0 di level baru.
+    
+-   Menghapus *shared memory* dungeon setelah di*raid* oleh hunter.
+    
+-   Dungeon dihapus dari array `SystemData`.
+
+```
+void battle_hunter(struct SystemData *data, struct Hunter *myself) {
+    if (myself->banned) {
+        printf("You are banned from performing this action.\n");
+        return;
+    }
+
+    printf("\n=== PVP LIST ===\n");
+
+    int valid_index[MAX_HUNTERS];
+    int count = 0;
+
+    // Tampilkan daftar hunter lain dari shared memory
+    for (int i = 0; i < data->num_hunters; i++) {
+        if (strcmp(data->hunters[i].username, myself->username) != 0 && data->hunters[i].banned == 0) {
+            int shmid = shmget(data->hunters[i].shm_key, sizeof(struct Hunter), 0666);
+            if (shmid == -1) continue;
+            [...]
+```
+Berfungsi sebagai salah satu fitur utama hunter yang memperbolehkan sesama hunter untuk menginisiasi PvP / battle antara hunter dengan hunter lainnya dengan berbagai ketentuan yang telah ditentukan, dengan mekanisme utama sebagai berikut:
+
+1.   Cek hunter *banned / un-banned*.
+    
+2.   Tampilkan daftar lawan yang valid.
+    
+3.   Input username lawan.
+    
+4.   Buka shared memory lawan.
+    
+5.   Hitung power kita dan lawan:  `power = atk + hp + def` 
+    
+6.   Kondisi Battle:
+- Jika menang:
+	-   Tambahkan semua stat lawan ke kita.
+    -   Hapus data lawan dari *shared memory hunter*
+
+-   Jika kalah:
+    -   Stat kita ditambahkan ke lawan.
+    -   Hapus data shared memory kita dari *shared memory hunter*
+    -   `exit(0)` karena kita kalah dan keluar dari permainan.
+
+```
+pthread_t notif_thread;
+int notif_enabled = 0;
+int notif_started = 0;
+int notification_on = 0;
+
+#define MAX_NOTIF_LEN 100
+char latest_notif[256] = "";
+
+void* notif_loop(void* arg) {
+    struct SystemData* sys_data = (struct SystemData*) arg;
+
+    while (1) {
+        if (!notif_enabled || sys_data->num_dungeons == 0) {
+            sleep(1);
+            continue;
+        }
+
+        struct Dungeon* d = &sys_data->dungeons[sys_data->current_notification_index];
+
+        snprintf(latest_notif, sizeof(latest_notif),
+                 "[NOTIF] Dungeon: %s with minimum Lv: %d", d->name, d->min_level);
+                 [...]
+
+    return NULL;
+}
+```
+Berfungsi sebagai salah satu fitur utama dalam program `hunter.c` yan menjadi *toggle notification* untuk memperlihatkan seluruh dungeon yang terbuka dan diperbarui setiap 3 detik, dengan mekanisme utama sebagai berikut:
+
+-   Loop selamanya.
+    
+-   Setiap 3 detik tampilkan notifikasi dungeon ke layar:
+    
+    -   Dungeon ditampilkan di baris ke-2 terminal (`\033[2;1H`).
+        
+    -   Posisi kursor disimpan dan dikembalikan (`\033[s`, `\033[u`).
+        
+    -   Menampilkan nama dungeon dan level minimal.
+        
+-   Notifikasi berputar dari `current_notification_index`.
+
+```
+void print_hunter_menu_with_notif(const char* username) {
+    printf("\033[2J\033[H"); // Clear screen
+
+    printf("=== HUNTER SYSTEM ===\n");
+
+    if (notif_enabled && strlen(latest_notif) > 0) {
+        printf("%s\n", latest_notif);  // Tampilkan notifikasi di sini
+    } else {
+        printf("\n"); // Spasi kosong kalau belum ada notif
+    }
+    [...]
+
+    printf("Choice: ");
+    fflush(stdout);
+}
+```
+Berfungsi sebagai format utama pada menu utama hunter secara rapih, dengan mekanisme utama sebagai berikut:
+
+-   Membersihkan layar (`\033[2J\033[H`).
+-   Menampilkan menu utama hunter.
+-   Menampilkan notifikasi di atas menu jika `notif_enabled`.
+
+```
+int main() {
+    key_t key = get_system_key();
+    int shmid = shmget(key, sizeof(struct SystemData), 0666);
+    if (shmid == -1) {
+        perror("Failed to access system shared memory");
+        return 1;
+    }
+
+    struct SystemData *data = (struct SystemData *)shmat(shmid, NULL, 0);
+
+    char username[50];
+    int logged_in = 0;
+    struct Hunter *hunter = NULL;
+
+    while (!logged_in) {
+        int choice;
+        printf("\n=== HUNTER MENU ===\n");
+        printf("1. Register\n");
+        printf("2. Login\n");
+        printf("3. Exit\n");
+        printf("Choice: ");
+        scanf("%d", &choice);
+        getchar();
+        [...]
+
+    shmdt(data);
+    return 0;
+}
+```
+Berfungsi sebagai program utama dalam program `hunter.c` yang mengatur keseluruhan fitur-fitur utama, sekunder, dan menu utama interaktif hunter pada program `hunter.c`, yaitu sebagai berikut:
+-   **Koneksi dan mengakses ke shared memory system untuk data**:
+ ```
+    key_t key = get_system_key(); int shmid =shmget(key,sizeof(SystemData), 0666);
+    data = shmat(shmid, NULL, 0);
+```
+    
+-   **Loop pada login/register**:
+    
+    -   Pilihan 1: Register → `register_hunter`
+        
+    -   Pilihan 2: Login → `login`
+        
+    -   Pilihan 3: Exit → detach & return
+        
+-   **Setelah login, tampilkan menu interaktif hunter :**
+```
+1. List Dungeon 
+2. Raid 
+3. Battle 
+4. Toggle Notification 
+5. Exit
+```
+   -   **Case 1**: Menampilkan dungeon available (fungsi #5)
+        
+   -   **Case 2**: Melakukan raid dungeon (fungsi #6)
+        
+   -   **Case 3**: PvP dengan hunter lain (fungsi #7)
+        
+   -   **Case 4**: Mengaktifkan thread notifikasi jika belum berjalan.
+        
+        `if (notif_enabled && !notif_started) pthread_create(...)` 
+        
+    -   **Case 5**: Keluar dari game / menu hunter.
 
 
 ---
