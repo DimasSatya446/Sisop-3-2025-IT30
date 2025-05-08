@@ -1047,6 +1047,10 @@ int main() {
  return 0;
 }
 ```
+- `#define SERVER_IP "127.0.0.1"`
+Mendefinisikan alamat IP server sebagai localhost (komputer sendiri).
+- `#define SERVER_PORT 8888`
+Menetapkan port server tempat client akan terhubung, dalam hal ini port 8888
 **Server**
 ```bash
 #include <stdio.h>
@@ -1108,6 +1112,16 @@ int main() {
     return 0;
 }
 ```
+- `PORT: `Port koneksi ke server.
+- `BUFFER_SIZE: `Buffer untuk komunikasi.
+- `int sock;
+struct sockaddr_in server;
+char buffer[BUFFER_SIZE];
+sock = socket(AF_INET, SOCK_STREAM, 0);` Membuat socket TCP.
+- `server.sin_family = AF_INET;
+server.sin_port = htons(PORT);
+server.sin_addr.s_addr = inet_addr("127.0.0.1");` Konfigurasi alamat server: localhost, port 8888.
+- `connect(sock, (struct sockaddr*)&server, sizeof(server));` Menghubungkan socket client ke server dungeon.
 
 b. **Sightseeing**
 > Anda melihat disekitar dungeon dan menemukan beberapa hal yang menarik seperti toko senjata dan pintu dengan aura yang cukup seram. Ketika player.c dijalankan, ia akan terhubung ke dungeon.c dan menampilkan sebuah main menu seperti yang dicontohkan di bawah ini (tidak harus mirip, dikreasikan sesuai kreatifitas masing-masing praktikan).
