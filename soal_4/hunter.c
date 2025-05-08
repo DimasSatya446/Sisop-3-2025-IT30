@@ -5,7 +5,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <unistd.h>
-#include <pthread.h> 
+#include <pthread.h>
 
 #define MAX_HUNTERS 50
 #define MAX_DUNGEONS 50
@@ -42,9 +42,6 @@ struct SystemData {
 key_t get_system_key() {
     return ftok("/tmp", 'S');
 }
-
-int notification_on = 0;
-pthread_t notif_thread;
 
 struct Hunter* register_hunter(struct SystemData *data, char *username) {
     if (data->num_hunters >= MAX_HUNTERS) return NULL;
@@ -208,11 +205,20 @@ void battle_hunter(struct SystemData *data, struct Hunter *myself) {
     int valid_index[MAX_HUNTERS];
     int count = 0;
 
+    // Tampilkan daftar hunter lain dari shared memory
     for (int i = 0; i < data->num_hunters; i++) {
         if (strcmp(data->hunters[i].username, myself->username) != 0 && data->hunters[i].banned == 0) {
-            int power = data->hunters[i].atk + data->hunters[i].hp + data->hunters[i].def;
-            printf("%s - Total Power: %d\n", data->hunters[i].username, power);
+            int shmid = shmget(data->hunters[i].shm_key, sizeof(struct Hunter), 0666);
+            if (shmid == -1) continue;
+
+            struct Hunter *h_ptr = (struct Hunter *)shmat(shmid, NULL, 0);
+            if (h_ptr == (void *)-1) continue;
+
+            int power = h_ptr->atk + h_ptr->hp + h_ptr->def;
+            printf("%s - Total Power: %d\n", h_ptr->username, power);
             valid_index[count++] = i;
+
+            shmdt(h_ptr);
         }
     }
 
@@ -241,7 +247,19 @@ void battle_hunter(struct SystemData *data, struct Hunter *myself) {
         return;
     }
 
-    struct Hunter *opponent = &data->hunters[found];
+    // Ambil hunter lawan dari shared memory
+    int shmid = shmget(data->hunters[found].shm_key, sizeof(struct Hunter), 0666);
+    if (shmid == -1) {
+        printf("Failed to access opponent's data.\n");
+        return;
+    }
+
+    struct Hunter *opponent = (struct Hunter *)shmat(shmid, NULL, 0);
+    if (opponent == (void *)-1) {
+        perror("shmat failed");
+        return;
+    }
+
     int my_power = myself->atk + myself->hp + myself->def;
     int op_power = opponent->atk + opponent->hp + opponent->def;
 
@@ -256,12 +274,10 @@ void battle_hunter(struct SystemData *data, struct Hunter *myself) {
         myself->exp += opponent->exp;
         myself->level += opponent->level;
 
-        int shmid = shmget(opponent->shm_key, sizeof(struct Hunter), 0666);
-        if (shmid >= 0) {
-            shmctl(shmid, IPC_RMID, NULL);
-            printf("Deleting defender's shared memory (shmid: %d)\n", shmid);
-        }
+        shmctl(shmid, IPC_RMID, NULL); // Hapus shared memory lawan
+        printf("Deleting defender's shared memory (shmid: %d)\n", shmid);
 
+        // Hapus hunter dari data->hunters
         for (int i = found; i < data->num_hunters - 1; i++) {
             data->hunters[i] = data->hunters[i + 1];
         }
@@ -269,18 +285,21 @@ void battle_hunter(struct SystemData *data, struct Hunter *myself) {
 
         printf("Battle won! You acquired %s's stats\n", target);
     } else {
+        // Update lawan dengan stat kita
         opponent->atk += myself->atk;
         opponent->hp += myself->hp;
         opponent->def += myself->def;
         opponent->exp += myself->exp;
         opponent->level += myself->level;
 
-        int shmid = shmget(myself->shm_key, sizeof(struct Hunter), 0666);
-        if (shmid >= 0) {
-            shmctl(shmid, IPC_RMID, NULL);
-            printf("You lost! Deleting your shared memory (shmid: %d)\n", shmid);
+        // Hapus shared memory kita sendiri
+        int my_shmid = shmget(myself->shm_key, sizeof(struct Hunter), 0666);
+        if (my_shmid >= 0) {
+            shmctl(my_shmid, IPC_RMID, NULL);
+            printf("You lost! Deleting your shared memory (shmid: %d)\n", my_shmid);
         }
 
+        // Hapus kita dari data->hunters
         for (int i = 0; i < data->num_hunters; i++) {
             if (strcmp(data->hunters[i].username, myself->username) == 0) {
                 for (int j = i; j < data->num_hunters - 1; j++) {
@@ -291,36 +310,20 @@ void battle_hunter(struct SystemData *data, struct Hunter *myself) {
             }
         }
 
+        shmdt(opponent);
         printf("You lost the battle. %s took your stats.\n", opponent->username);
         exit(0);
     }
 
+    shmdt(opponent);
     printf("\nPress enter to continue...");
     getchar();
-}
-
-void *notification_loop(void *arg) {
-    struct SystemData *data = (struct SystemData *)arg;
-    int index = 0;
-
-    while (notification_on) {
-        if (data->num_dungeons == 0) {
-            printf("\n[NOTIF] No dungeons available.\n");
-        } else {
-            struct Dungeon d = data->dungeons[index % data->num_dungeons];
-            printf("\n[NOTIF] Dungeon: %s | Min Lv: %d |\n", d.name, d.min_level);
-            index++;
-        }
-
-        sleep(3);
-    }
-
-    return NULL;
 }
 
 pthread_t notif_thread;
 int notif_enabled = 0;
 int notif_started = 0;
+int notification_on = 0;
 
 #define MAX_NOTIF_LEN 100
 char latest_notif[256] = "";
@@ -437,8 +440,8 @@ int main() {
         switch (ch) {
             case 1:
                 list_available_dungeons(data, hunter);
-		printf("\nPress ENTER to return...");
-    		getchar();
+		        printf("\nPress ENTER to return...");
+    		    getchar();
                 break;
             case 2:
                 raid_dungeon(data, hunter);
