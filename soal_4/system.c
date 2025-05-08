@@ -54,20 +54,24 @@ const char *dungeon_names[] = {
 
 void display_all_hunters(struct SystemData *data) {
     printf("=== LIST HUNTERS ===\n");
-    for (int i = 0; i < data->num_hunters; i++) {
+    for (int i = 0; i < data->num_hunters; ) {
         key_t h_key = data->hunters[i].shm_key;
         int h_shmid = shmget(h_key, sizeof(struct Hunter), 0666);
         if (h_shmid == -1) {
-            perror("shmget failed");
-            continue;
+            // Bersihkan entry yang invalid
+            for (int j = i; j < data->num_hunters - 1; j++) {
+                data->hunters[j] = data->hunters[j + 1];
+            }
+            data->num_hunters--;
+            continue; // lanjut tanpa menaikkan i
         }
-
+    
         struct Hunter *h_ptr = (struct Hunter *)shmat(h_shmid, NULL, 0);
         if (h_ptr == (void *)-1) {
-            perror("shmat failed");
+            i++;
             continue;
         }
-
+    
         printf("%d. %s | Lv:%d | EXP:%d | ATK:%d | HP:%d | DEF:%d | %s\n",
                i + 1,
                h_ptr->username,
@@ -76,10 +80,11 @@ void display_all_hunters(struct SystemData *data) {
                h_ptr->atk,
                h_ptr->hp,
                h_ptr->def,
-               data->hunters[i].banned ? "BANNED" : "OK");
-
+               h_ptr->banned ? "BANNED" : "OK");
+    
         shmdt(h_ptr);
-    }
+        i++;
+    }    
 }
 
 void display_all_dungeons(struct SystemData *data) {
