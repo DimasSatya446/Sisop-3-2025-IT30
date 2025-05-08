@@ -687,7 +687,7 @@ while (1) {
 - Parent lanjut menunggu klien berikutnya.
 
 ---
-## soal_2
+
 ## soal_2
 ### Perusahaan Ekspedisi *Rush Go*
 ---
