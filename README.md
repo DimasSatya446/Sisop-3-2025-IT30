@@ -2428,13 +2428,152 @@ Berfungsi sebagai program utama dalam program `hunter.c` yang mengatur keseluruh
    -   **Case 3**: PvP dengan hunter lain (fungsi #7)
         
    -   **Case 4**: Mengaktifkan thread notifikasi jika belum berjalan.
-        
         `if (notif_enabled && !notif_started) pthread_create(...)` 
         
-    -   **Case 5**: Keluar dari game / menu hunter.
+   -   **Case 5**: Keluar dari game / menu hunter.
 
 
 ---
 ## Revisi
 ### soal_4
-a
+### soal_4
+![image](https://github.com/user-attachments/assets/f4807ba8-5137-4e20-bbb5-f3086ac0c931)
+Seharusnya saat battle, keseluruhan power hunter yang telah diinisiasi pada data {atk + hp + def} sehingga data hunter pada *shared memory* selalu ter-update dan tidak terinisiasi data awal. Pada data battle, bisa terlihat seluruh power hunter yang telah terinisiasi dengan stats yang ada.
+
+```
+void battle_hunter(struct SystemData *data, struct Hunter *myself) {
+    if (myself->banned) {
+        printf("You are banned from performing this action.\n");
+        return;
+    }
+
+    printf("\n=== PVP LIST ===\n");
+
+    int valid_index[MAX_HUNTERS];
+    int count = 0;
+
+    // Tampilkan daftar hunter lain dari shared memory
+    for (int i = 0; i < data->num_hunters; i++) {
+        if (strcmp(data->hunters[i].username, myself->username) != 0 && data->hunters[i].banned == 0) {
+            int shmid = shmget(data->hunters[i].shm_key, sizeof(struct Hunter), 0666);
+            if (shmid == -1) continue;
+
+            struct Hunter *h_ptr = (struct Hunter *)shmat(shmid, NULL, 0);
+            if (h_ptr == (void *)-1) continue;
+
+            int power = h_ptr->atk + h_ptr->hp + h_ptr->def;
+            printf("%s - Total Power: %d\n", h_ptr->username, power);
+            valid_index[count++] = i;
+
+            shmdt(h_ptr);
+        }
+    }
+
+    if (count == 0) {
+        printf("No available opponents.\n");
+        return;
+    }
+
+    char target[50];
+    printf("\nTarget: ");
+    scanf("%s", target);
+    getchar();
+
+    int found = -1;
+    for (int i = 0; i < data->num_hunters; i++) {
+        if (strcmp(data->hunters[i].username, target) == 0 &&
+            strcmp(myself->username, target) != 0 &&
+            data->hunters[i].banned == 0) {
+            found = i;
+            break;
+        }
+    }
+
+    if (found == -1) {
+        printf("Invalid target.\n");
+        return;
+    }
+
+    // Ambil hunter lawan dari shared memory
+    int shmid = shmget(data->hunters[found].shm_key, sizeof(struct Hunter), 0666);
+    if (shmid == -1) {
+        printf("Failed to access opponent's data.\n");
+        return;
+    }
+
+    struct Hunter *opponent = (struct Hunter *)shmat(shmid, NULL, 0);
+    if (opponent == (void *)-1) {
+        perror("shmat failed");
+        return;
+    }
+
+    int my_power = myself->atk + myself->hp + myself->def;
+    int op_power = opponent->atk + opponent->hp + opponent->def;
+
+    printf("You chose to battle %s\n", opponent->username);
+    printf("Your Power: %d\n", my_power);
+    printf("Opponent's Power: %d\n", op_power);
+
+    if (my_power >= op_power) {
+        myself->atk += opponent->atk;
+        myself->hp += opponent->hp;
+        myself->def += opponent->def;
+        myself->exp += opponent->exp;
+        myself->level += opponent->level;
+
+        shmctl(shmid, IPC_RMID, NULL); // Hapus shared memory lawan
+        printf("Deleting defender's shared memory (shmid: %d)\n", shmid);
+
+        // Hapus hunter dari data->hunters
+        for (int i = found; i < data->num_hunters - 1; i++) {
+            data->hunters[i] = data->hunters[i + 1];
+        }
+        data->num_hunters--;
+
+        printf("Battle won! You acquired %s's stats\n", target);
+    } else {
+        // Update lawan dengan stat kita
+        opponent->atk += myself->atk;
+        opponent->hp += myself->hp;
+        opponent->def += myself->def;
+        opponent->exp += myself->exp;
+        opponent->level += myself->level;
+
+        // Hapus shared memory kita sendiri
+        int my_shmid = shmget(myself->shm_key, sizeof(struct Hunter), 0666);
+        if (my_shmid >= 0) {
+            shmctl(my_shmid, IPC_RMID, NULL);
+            printf("You lost! Deleting your shared memory (shmid: %d)\n", my_shmid);
+        }
+
+        // Hapus kita dari data->hunters
+        for (int i = 0; i < data->num_hunters; i++) {
+            if (strcmp(data->hunters[i].username, myself->username) == 0) {
+                for (int j = i; j < data->num_hunters - 1; j++) {
+                    data->hunters[j] = data->hunters[j + 1];
+                }
+                data->num_hunters--;
+                break;
+            }
+        }
+
+        shmdt(opponent);
+        printf("You lost the battle. %s took your stats.\n", opponent->username);
+        exit(0);
+    }
+
+    shmdt(opponent);
+    printf("\nPress enter to continue...");
+    getchar();
+}
+```
+
+|After fix|
+![image](https://github.com/user-attachments/assets/84090b1b-4f17-4e6d-9bb6-5742eabb3434)
+Setelah fix, data *shared memory hunter* telah ter-update dengan yang paling baru pada fitur *battle*.
+
+Tak hanya itu, di beberapa *source code* ada beberapa fix untuk code yang lebih bersih dan tertata pada data *shared memory* yang tertuju, seperti:
+- ban/unban hunter
+- reset hunter
+- pembersihan code cleanup() dengan yang lebih ditujukan pada fungsi yang lebih benar (penghapusan shm pada exit).
+(Namun, fix *source code* ini tidak memiliki bukti output karena terindikasi setalah revisi sebelumnya, sehingga proble langsung diperbaki)
