@@ -1443,7 +1443,449 @@ Server mengirim string stats_response ke client melalui new_socket.`
 
 d. Weapon Shop
 > Ternyata anda memiliki sisa uang dan langsung pergi ke toko senjata tersebut untuk membeli senjata. Terdapat 5 pilihan senjata di toko tersebut dan beberapa dari mereka memiliki passive yang unik. Disaat opsi Shop dipilih, program akan menunjukan senjata apa saja yang dapat dibeli beserta harga, damage, dan juga passive (jika ada). List senjata yang ada dan dapat dibeli beserta logic/command untuk membeli senjata tersebut diletakan di code shop.c/shop.h yang nanti akan dipakai oleh dungeon.c.
+- Import shop.c sebagai bagian dari kompilasi di server
+`#include "shop.c"`
+- `#define MAX_PASSIVE 2       // Jumlah maksimum efek pasif senjata
+#define SHOP_SIZE 5         // Total senjata tersedia di toko
+#define BUFFER_SIZE 2048    // Ukuran buffer untuk output string`
+- `typedef struct {
+    int id;
+    char name[32];
+    int price;
+    int damage;
+    char passive[MAX_PASSIVE][64];
+} Weapon;` untuk menyimpan data weapon
+- `void init_shop()`
+Menginisialisasi daftar senjata di weapon_shop dengan 5 jenis senjata:
+1. Rusty Sword – Bleed, Low durability
+2. Battle Axe – Bleed, Slow attack
+3. Fire Wand – Burn, Mana drain
+4. Twin Daggers – Double hit, Poison
+5. Staff of Homa – Double hit, Burn
 
+- `void display_weapon_shop(char* buffer)`
+Menghasilkan tampilan tabel senjata dalam bentuk string berwarna yang dapat dikirim ke client atau dicetak ke terminal.
+- `void format_weapon_display(const Weapon* w, char* output, int with_passive)`
+Menghasilkan representasi string dari senjata.
+-- Jika with_passive == 1, maka string akan menyertakan passive effect.
+-- Jika with_passive == 0, hanya nama senjata yang ditampilkan.
+- `int get_weapon_by_id(int id, Weapon* result)`
+Mencari senjata berdasarkan ID.
+Return 1 jika senjata ditemukan dan data disalin ke result.
+Return 0 jika tidak ditemukan.
+
+e. Handy Inventory
+> Setelah membeli senjata di toko tadi, anda membuka ransel anda untuk memakai senjata tersebut. Jika opsi View Inventory dipilih, program akan menunjukan senjata apa saja yang dimiliki dan dapat dipakai (jika senjata memiliki passive, tunjukan juga passive tersebut). Lalu apabila opsi Show Player Stats dipilih saat menggunakan weapon maka Base Damage player akan berubah dan jika memiliki passive, maka akan ada status tambahan yaitu Passive.
+
+**Server**
+```else if (strcmp(buffer, "INVENTORY") == 0) {
+            char inv[BUFFER_SIZE] = "=== YOUR INVENTORY ===\n";
+            char temp[256];
+            for (int i = 0; i < player.inventory_size; i++) {
+                format_weapon_display(&player.inventory[i], temp, is_same_weapon(&player.equipped, &player.inventory[i]));
+                strcat(inv, "[");
+                char idx[4];
+                sprintf(idx, "%d", i);
+                strcat(inv, idx);
+                strcat(inv, "] ");
+                strcat(inv, temp);
+                strcat(inv, "\n");
+	}
+            send(new_socket, inv, strlen(inv), 0);
+            memset(buffer, 0, BUFFER_SIZE);
+            recv(new_socket, buffer, BUFFER_SIZE, 0);
+            int idx = atoi(buffer);
+            if (idx >= 0 && idx < player.inventory_size) {
+                player.equipped = player.inventory[idx];
+                player.base_damage = player.equipped.damage;
+                send(new_socket, "Weapon equipped!", 17, 0);
+            } else {
+                send(new_socket, "Invalid index!", 15, 0);
+            }
+        }
+```
+- `else if (strcmp(buffer, "INVENTORY") == 0) {`
+Server memeriksa apakah perintah yang diterima dari client adalah "INVENTORY". Jika ya, server akan menampilkan daftar inventaris pemain.
+
+Format Tampilan Inventaris:
+```
+char inv[BUFFER_SIZE] = "=== YOUR INVENTORY ===\n";
+char temp[256];
+for (int i = 0; i < player.inventory_size; i++) {
+    format_weapon_display(&player.inventory[i], temp, is_same_weapon(&player.equipped, &player.inventory[i]));
+    strcat(inv, "[");
+    char idx[4];
+    sprintf(idx, "%d", i);
+    strcat(inv, idx);
+    strcat(inv, "] ");
+    strcat(inv, temp);
+    strcat(inv, "\n");
+}
+```
+- Server memformat tampilan inventaris pemain. Dimulai dengan string header "=== YOUR INVENTORY ===", kemudian untuk setiap senjata dalam inventaris pemain, informasi tentang senjata tersebut diformat menggunakan fungsi format_weapon_display dan ditambahkan ke dalam string inv.
+
+- Setiap senjata akan ditampilkan dengan indeks (misalnya, [0], [1], dll.) dan deskripsi senjata.
+
+- Mengirim Inventaris ke Client:
+`send(new_socket, inv, strlen(inv), 0);`
+Setelah format inventaris selesai, server mengirimkan informasi inventaris tersebut ke client menggunakan send().
+
+- Mengambil Pilihan Senjata dari Client:
+`memset(buffer, 0, BUFFER_SIZE);
+recv(new_socket, buffer, BUFFER_SIZE, 0);
+int idx = atoi(buffer);`
+Server kemudian menunggu untuk menerima input dari client yang berisi indeks senjata yang ingin dipilih untuk dipasang (equip).
+
+- Validasi dan Penambahan Senjata:
+
+`if (idx >= 0 && idx < player.inventory_size) {
+    player.equipped = player.inventory[idx];
+    player.base_damage = player.equipped.damage;
+    send(new_socket, "Weapon equipped!", 17, 0);
+} else {
+    send(new_socket, "Invalid index!", 15, 0);
+}`
+- Jika indeks yang dimasukkan valid (berada dalam rentang inventaris), senjata tersebut dipasang (equip) oleh server, dan informasi senjata yang dipasang dikirimkan kembali ke client.
+- Jika indeks tidak valid, server mengirimkan pesan kesalahan "Invalid index!".
+**Client**
+```
+case 3: {
+                // Send command to view inventory
+                const char* cmd = "INVENTORY";
+                send(sock, cmd, strlen(cmd), 0);
+
+                // Receive inventory list
+                memset(buffer, 0, MAX_DATA);
+                recv(sock, buffer, MAX_DATA, 0);
+                printf("\n%s", buffer);
+
+                // Read weapon index input
+                int weapon_idx;
+                printf("Enter weapon index to equip (or invalid number to cancel): ");
+                if (scanf("%d", &weapon_idx) == 1) {
+                    getchar(); // consume newline
+                    char idx_str[8];
+                    snprintf(idx_str, sizeof(idx_str), "%d", weapon_idx);
+                    send(sock, idx_str, strlen(idx_str), 0);
+
+                    // Receive equip confirmation
+                    memset(buffer, 0, MAX_DATA);
+                    recv(sock, buffer, MAX_DATA, 0);
+                    printf("%s\n", buffer);
+                } else {
+                    getchar(); // consume invalid input
+                    printf("Invalid input.\n");
+                }
+                break;
+            }
+```
+- Mengirim Perintah untuk Melihat Inventaris:
+`const char* cmd = "INVENTORY";
+send(sock, cmd, strlen(cmd), 0);`
+Client mengirimkan perintah "INVENTORY" ke server untuk meminta daftar inventaris.
+
+- Menerima dan Menampilkan Inventaris:
+`memset(buffer, 0, MAX_DATA);
+recv(sock, buffer, MAX_DATA, 0);
+printf("\n%s", buffer);`
+Setelah mengirim perintah, client menerima data inventaris dari server dan menampilkannya di layar.
+
+- Memasukkan Indeks Senjata yang Akan Dipasang:
+`int weapon_idx;
+printf("Enter weapon index to equip (or invalid number to cancel): ");
+if (scanf("%d", &weapon_idx) == 1) {
+    getchar(); // consume newline
+    char idx_str[8];
+    snprintf(idx_str, sizeof(idx_str), "%d", weapon_idx);
+    send(sock, idx_str, strlen(idx_str), 0);
+}`
+Client meminta input dari pengguna untuk memilih senjata yang ingin dipasang dari inventaris. Pengguna diminta untuk memasukkan indeks senjata (misalnya, 0, 1, dll.).
+
+- Input tersebut kemudian dikirimkan ke server sebagai string.
+
+- Menerima Konfirmasi atau Pesan Kesalahan:
+`memset(buffer, 0, MAX_DATA);
+recv(sock, buffer, MAX_DATA, 0);
+printf("%s\n", buffer);`
+Client menerima konfirmasi atau pesan kesalahan dari server, yang memberi tahu apakah senjata berhasil dipasang atau jika ada masalah (misalnya, indeks tidak valid).
+
+f. Enemy Encounter
+> Anda sekarang sudah siap untuk melewati pintu yang seram tadi, disaat anda memasuki pintu tersebut, anda langsung ditemui oleh sebuah musuh yang bukan sebuah manusia. Dengan tekad yang bulat, anda melawan musuh tersebut. Saat opsi Battle Mode dipilih, program akan menunjukan health-bar musuh serta angka yang menunjukan berapa darah musuh tersebut dan menunggu input dengan opsi attack untuk melakukan sebuah serangan dan juga exit untuk keluar dari Battle Mode. Apabila darah musuh berkurang, maka health-bar musuh akan berkurang juga.
+> Jika darah musuh sudah 0, maka program akan menunjukan rewards berupa berapa banyak gold yang didapatkan lalu akan muncul musuh lagi.
+> Other Battle Logic :
+- Health & Rewards
+Untuk darah musuh, seberapa banyak darah yang mereka punya dibuat secara random, contoh: 50-200 HP. Lakukan hal yang sama untuk rewards. 
+- Damage Equation
+Untuk damage, gunakan base damage sebagai kerangka awal dan tambahkan rumus damage apapun (dibebaskan, yang pasti perlu random number agar hasil damage bervariasi). Lalu buatlah logic agar setiap serangan memiliki kesempatan untuk Critical yang membuat damage anda 2x lebih besar.
+- Passive
+Jika senjata yang dipakai memiliki Passive setiap kali passive tersebut menyala, maka tunjukan bahwa passive tersebut aktif.
+
+**Client**
+```
+case 4: {
+                const char* cmd = "BATTLE";
+                send(sock, cmd, strlen(cmd), 0);
+            
+                while (1) {
+                    // tunggu battle message server
+                    memset(buffer, 0, MAX_DATA);
+                    int valread = recv(sock, buffer, MAX_DATA - 1, 0);
+                    if (valread <= 0) {
+                        printf("Connection lost!\n");
+                        break;
+                    }
+                    buffer[valread] = '\0'; // Null-terminate
+            
+                    printf("\n%s\n", buffer);
+            
+                    // Wait for input
+                    printf("> ");
+                    char battle_cmd[MAX_DATA];
+                    fgets(battle_cmd, sizeof(battle_cmd), stdin);
+                    battle_cmd[strcspn(battle_cmd, "\n")] = '\0'; // Remove newline
+            
+                    // Send input to server
+                    send(sock, battle_cmd, strlen(battle_cmd), 0);
+            
+                    // Exit battle loop kalau ketik 'exit'
+                    if (strcmp(battle_cmd, "exit") == 0) {
+                        break;
+                    }
+                }
+            
+                break;
+            }
+```
+- Mengirim Perintah "BATTLE" ke Server:
+`const char* cmd = "BATTLE";
+send(sock, cmd, strlen(cmd), 0);`
+Client mengirimkan perintah "BATTLE" ke server untuk memulai pertempuran. Server akan merespons dengan informasi terkait pertempuran, seperti musuh yang muncul.
+- Menerima Pesan Pertempuran dari Server:
+`while (1) {
+    memset(buffer, 0, MAX_DATA);
+    int valread = recv(sock, buffer, MAX_DATA - 1, 0);
+    if (valread <= 0) {
+        printf("Connection lost!\n");
+        break;
+    }
+    buffer[valread] = '\0'; // Null-terminate
+    printf("\n%s\n", buffer);`
+Client menunggu pesan dari server yang berisi informasi tentang pertempuran. Misalnya, server memberi tahu bahwa pertempuran dimulai dan musuh muncul. Jika koneksi terputus, client akan menampilkan pesan "Connection lost!" dan keluar dari pertempuran.
+
+- Menunggu Input dari Pengguna:
+`printf("> ");
+char battle_cmd[MAX_DATA];
+fgets(battle_cmd, sizeof(battle_cmd), stdin);
+battle_cmd[strcspn(battle_cmd, "\n")] = '\0'; // Remove newline`
+Setelah menerima pesan dari server, client menunggu input dari pengguna untuk memilih aksi dalam pertempuran, seperti menyerang musuh atau keluar dari pertempuran.
+
+- Mengirim Perintah ke Server:
+`send(sock, battle_cmd, strlen(battle_cmd), 0);`
+Setelah pengguna memasukkan perintah (misalnya "attack" atau "exit"), perintah tersebut dikirimkan ke server.
+
+- Mengakhiri Pertempuran jika Menggunakan Perintah "exit":
+`if (strcmp(battle_cmd, "exit") == 0) {
+    break;
+}`
+Jika pengguna mengetikkan perintah "exit", maka client akan keluar dari loop pertempuran dan menyelesaikan sesi pertempuran.
+**Server**
+```
+else if (strcmp(buffer, "BATTLE") == 0) {
+            while (1) {
+                // Membuat musuh baru setiap kali loop dimulai
+                int enemy_max_hp = rand() % 30 + 40;
+                int enemy_hp = enemy_max_hp;
+                char msg[BUFFER_SIZE];
+                snprintf(msg, BUFFER_SIZE,
+                         "=== BATTLE STARTED ===\nEnemy appeared with: ");
+                char bar[64];
+                display_health_bar(bar, enemy_hp, enemy_max_hp);
+                strcat(msg, bar);
+                strcat(msg, "\nType 'attack' to attack or 'exit' to leave battle.");
+                send(new_socket, msg, strlen(msg), 0);
+        
+                while (enemy_hp > 0) {
+                    memset(buffer, 0, BUFFER_SIZE);
+                    int recv_len = recv(new_socket, buffer, BUFFER_SIZE - 1, 0);
+                    if (recv_len <= 0) {
+                        printf("[DEBUG] Client disconnected or recv error during battle\n");
+                        goto exit_battle;
+                    }
+                    buffer[recv_len] = '\0';
+        
+                    if (strcmp(buffer, "attack") == 0) {
+                        int base = player.base_damage;
+                        int variance = (base / 2 > 0) ? base / 2 : 1;
+                        int damage = base + rand() % (variance + 1);
+                        int is_crit = rand() % 100 < 20;
+                        if (is_crit) damage *= 2;
+        
+                        char passive_effect[256] = "";
+                        int passive_triggered = 0;
+        
+                        // Bleed (25% chance)
+                        if (has_passive(&player.equipped, "Bleed chance")) {
+                            if (rand() % 100 < 25) {
+                                int bleed_damage = 5;
+                                enemy_hp -= bleed_damage;
+                                snprintf(passive_effect, sizeof(passive_effect),
+                                        "Your weapon bleeds the enemy! Dealt %d extra bleed damage.\n", bleed_damage);
+                                passive_triggered = 1;
+                            }
+                        }
+        
+                        // Burn (20% chance)
+                        if (has_passive(&player.equipped, "Burn effect")) {
+                            if (rand() % 100 < 20) {
+                                int burn_damage = 7;
+                                enemy_hp -= burn_damage;
+                                snprintf(passive_effect, sizeof(passive_effect),
+                                        "Enemy is burning! Dealt %d extra burn damage.\n", burn_damage);
+                                passive_triggered = 1;
+                            }
+                        }
+        
+                        // Double Hit (30% chance)
+                        if (has_passive(&player.equipped, "Double Hit")) {
+                            if (rand() % 100 < 30) {
+                                int extra_damage = base + rand() % (variance + 1);
+                                enemy_hp -= extra_damage;
+                                snprintf(passive_effect, sizeof(passive_effect),
+                                        "Double hit activated! Dealt %d extra damage.\n", extra_damage);
+                                passive_triggered = 1;
+                            }
+                        }
+        
+                        // Poison (20% chance)
+                        if (has_passive(&player.equipped, "Poison")) {
+                            if (rand() % 100 < 20) {
+                                int poison_damage = 3;
+                                enemy_hp -= poison_damage;
+                                snprintf(passive_effect, sizeof(passive_effect),
+                                        "Enemy is poisoned! Dealt %d extra poison damage.\n", poison_damage);
+                                passive_triggered = 1;
+                            }
+                        }
+        
+                        enemy_hp -= damage;
+                        if (enemy_hp < 0) enemy_hp = 0;
+        
+                        char attack_msg[BUFFER_SIZE];
+                        if (is_crit) {
+                            snprintf(attack_msg, BUFFER_SIZE,
+                                    "=== CRITICAL HIT! ===\nYou dealt %d damage!\n%s",
+                                    damage, passive_triggered ? passive_effect : "");
+                        } else {
+                            snprintf(attack_msg, BUFFER_SIZE,
+                                    "You dealt %d damage!\n%s",
+                                    damage, passive_triggered ? passive_effect : "");
+                        }
+        
+                        send(new_socket, attack_msg, strlen(attack_msg), 0);
+        
+                        if (enemy_hp == 0) {
+                            int reward = rand() % 100 + 50;
+                            player.gold += reward;
+                            player.kills++;
+                            snprintf(attack_msg, BUFFER_SIZE,
+                                    "You defeated the enemy!\n=== REWARD ===\nYou earned %d gold!\nTotal kills: %d\n\n",
+                                    reward, player.kills);
+                            send(new_socket, attack_msg, strlen(attack_msg), 0);
+                            break; // Keluar dari loop musuh saat ini
+                        } else {
+                            snprintf(attack_msg, BUFFER_SIZE, "=== ENEMY STATUS ===\nEnemy health: ");
+                            display_health_bar(bar, enemy_hp, enemy_max_hp);
+                            strcat(attack_msg, bar);
+                            send(new_socket, attack_msg, strlen(attack_msg), 0);
+                        }
+                    } else if (strcmp(buffer, "exit") == 0) {
+                        send(new_socket, "You fled the battle.", 22, 0);
+                        goto exit_battle;
+                    } else {
+                        send(new_socket, "Unknown battle command.", 25, 0);
+                    }
+                }
+            }
+            exit_battle:
+                continue;
+```
+- Memulai Pertempuran:
+`else if (strcmp(buffer, "BATTLE") == 0) {
+    while (1) {
+        int enemy_max_hp = rand() % 30 + 40;
+        int enemy_hp = enemy_max_hp;
+        char msg[BUFFER_SIZE];
+        snprintf(msg, BUFFER_SIZE, "=== BATTLE STARTED ===\nEnemy appeared with: ");
+        char bar[64];
+        display_health_bar(bar, enemy_hp, enemy_max_hp);
+        strcat(msg, bar);
+        strcat(msg, "\nType 'attack' to attack or 'exit' to leave battle.");
+        send(new_socket, msg, strlen(msg), 0);`
+Server memulai pertempuran dengan mengirimkan pesan kepada client bahwa musuh baru telah muncul. Musuh ini memiliki HP acak antara 40 hingga 70.
+
+- Menunggu Perintah dari Client:
+`while (enemy_hp > 0) {
+    memset(buffer, 0, BUFFER_SIZE);
+    int recv_len = recv(new_socket, buffer, BUFFER_SIZE - 1, 0);
+    if (recv_len <= 0) {
+        printf("[DEBUG] Client disconnected or recv error during battle\n");
+        goto exit_battle;
+    }
+    buffer[recv_len] = '\0';`
+Setelah memulai pertempuran, server menunggu perintah dari client. Jika client mengirimkan perintah "attack", server akan menghitung kerusakan yang diberikan pada musuh.
+
+- Menangani Perintah "attack":
+`if (strcmp(buffer, "attack") == 0) {
+    int base = player.base_damage;
+    int variance = (base / 2 > 0) ? base / 2 : 1;
+    int damage = base + rand() % (variance + 1);
+    int is_crit = rand() % 100 < 20;
+    if (is_crit) damage *= 2;`
+Server memproses perintah "attack" dengan menghitung kerusakan yang diterima oleh musuh. Kerusakan didasarkan pada damage dasar pemain dan mungkin dikalikan dua jika terjadi critical hit (20% peluang).
+
+- Efek Pasif Senjata (Contoh: Bleed, Burn, Poison, dll.):
+`if (has_passive(&player.equipped, "Bleed chance")) {
+    if (rand() % 100 < 25) {
+        int bleed_damage = 5;
+        enemy_hp -= bleed_damage;
+        snprintf(passive_effect, sizeof(passive_effect), "Your weapon bleeds the enemy! Dealt %d extra bleed damage.\n", bleed_damage);
+        passive_triggered = 1;
+    }
+}
+- Server juga memeriksa apakah senjata pemain memiliki efek pasif, seperti peluang untuk menyebabkan kerusakan tambahan pada musuh (contoh: "Bleed", "Burn", "Poison", dll.). Jika efek pasif terpicu, kerusakan ekstra diterima oleh musuh.
+
+- Mengirimkan Pesan Serangan:
+`char attack_msg[BUFFER_SIZE];
+if (is_crit) {
+    snprintf(attack_msg, BUFFER_SIZE, "=== CRITICAL HIT! ===\nYou dealt %d damage!\n%s", damage, passive_triggered ? passive_effect : "");
+} else {
+    snprintf(attack_msg, BUFFER_SIZE, "You dealt %d damage!\n%s", damage, passive_triggered ? passive_effect : "");
+}
+send(new_socket, attack_msg, strlen(attack_msg), 0);`
+Setelah perhitungan damage selesai, server mengirimkan pesan kepada client tentang berapa banyak kerusakan yang berhasil dilakukan pada musuh dan apakah ada efek pasif yang terjadi.
+
+- Musuh Kalah atau Masih Bertahan:
+`if (enemy_hp == 0) {
+    int reward = rand() % 100 + 50;
+    player.gold += reward;
+    player.kills++;
+    snprintf(attack_msg, BUFFER_SIZE, "You defeated the enemy!\n=== REWARD ===\nYou earned %d gold!\nTotal kills: %d\n\n", reward, player.kills);
+    send(new_socket, attack_msg, strlen(attack_msg), 0);
+    break; // Keluar dari loop musuh saat ini
+} else {
+    snprintf(attack_msg, BUFFER_SIZE, "=== ENEMY STATUS ===\nEnemy health: ");
+    display_health_bar(bar, enemy_hp, enemy_max_hp);
+    strcat(attack_msg, bar);
+    send(new_socket, attack_msg, strlen(attack_msg), 0);
+}`
+Jika musuh kalah, server memberikan hadiah berupa emas kepada pemain dan menambah jumlah kill pemain. Server juga menampilkan status musuh yang tersisa jika musuh masih hidup.
+
+- Menangani Perintah "exit":
+`else if (strcmp(buffer, "exit") == 0) {
+    send(new_socket, "You fled the battle.", 22, 0);
+    goto exit_battle;
+}`
+Jika pemain memilih untuk keluar dari pertempuran dengan mengetik "exit", server akan mengirim pesan "You fled the battle" dan keluar dari loop pertempuran.
 ---
 ## soal_4
 ### Tiba-Tiba Jadi Admin Sistem `(Warnet)` Setelah Reinkarnasi?! 📶🖥️ Dari Shadow Monarch ke Admin Sistem Hunter Dunia Lain!
