@@ -706,6 +706,8 @@ while (1) {
 - **Program `./dispatcher` dapat mengecek status setiap pengiriman.**
 - **Program `./dispatcher` dapat memperlihatkan keseluruhan pengiriman dalam format list disertai nama dan statusnya.**
 
+**Sebagai efisiensi line, pada soal ini penjelasan `source code` pada beberapa *line code* disingkat dengan `[...]`, sehingga tidak memakan banyak line yang ada. Kejelasan line yang sudah pasti / FIX telah di bentuk dan dirancang pada folder soal yang sudah disediakan / ada. Terimakasih 🙇‍♂️🙏**
+
 ---
 
 ### Code's Key Components
