@@ -2436,8 +2436,9 @@ Berfungsi sebagai program utama dalam program `hunter.c` yang mengatur keseluruh
 ---
 ## Revisi
 ### soal_4
-### soal_4
+
 ![image](https://github.com/user-attachments/assets/f4807ba8-5137-4e20-bbb5-f3086ac0c931)
+
 Seharusnya saat battle, keseluruhan power hunter yang telah diinisiasi pada data {atk + hp + def} sehingga data hunter pada *shared memory* selalu ter-update dan tidak terinisiasi data awal. Pada data battle, bisa terlihat seluruh power hunter yang telah terinisiasi dengan stats yang ada.
 
 ```
@@ -2569,7 +2570,9 @@ void battle_hunter(struct SystemData *data, struct Hunter *myself) {
 ```
 
 |After fix|
+
 ![image](https://github.com/user-attachments/assets/84090b1b-4f17-4e6d-9bb6-5742eabb3434)
+
 Setelah fix, data *shared memory hunter* telah ter-update dengan yang paling baru pada fitur *battle*.
 
 Tak hanya itu, di beberapa *source code* ada beberapa fix untuk code yang lebih bersih dan tertata pada data *shared memory* yang tertuju, seperti:
