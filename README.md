@@ -2579,4 +2579,4 @@ Tak hanya itu, di beberapa *source code* ada beberapa fix untuk code yang lebih 
 - ban/unban hunter
 - reset hunter
 - pembersihan code cleanup() dengan yang lebih ditujukan pada fungsi yang lebih benar (penghapusan shm pada exit).
-(Namun, fix *source code* ini tidak memiliki bukti output karena terindikasi setalah revisi sebelumnya, sehingga proble langsung diperbaki)
+(Namun, fix *source code* ini tidak memiliki bukti output karena terindikasi setalah revisi sebelumnya, sehingga problem langsung diperbaiki)
