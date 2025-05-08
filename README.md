@@ -2569,7 +2569,7 @@ void battle_hunter(struct SystemData *data, struct Hunter *myself) {
 }
 ```
 
-|After fix|
+>**|After fix|**
 
 ![image](https://github.com/user-attachments/assets/84090b1b-4f17-4e6d-9bb6-5742eabb3434)
 
