@@ -231,21 +231,6 @@ void reset_hunter(struct SystemData *data) {
 int shmid = -1;
 struct SystemData *system_data = NULL;
 
-void cleanup(int sig) {
-    printf("\n[System] SIGINT diterima. Menghapus semua shared memory...\n");
-
-    if (shmid != -1) shmctl(shmid, IPC_RMID, NULL);  // Hapus shared memory utama
-
-    if (system_data != NULL) {
-        for (int i = 0; i < system_data->num_dungeons; i++) {
-            int dungeon_shmid = shmget(system_data->dungeons[i].shm_key, sizeof(struct Dungeon), 0666);
-            if (dungeon_shmid != -1) shmctl(dungeon_shmid, IPC_RMID, NULL);
-        }
-    }
-
-    exit(0);
-}
-
 int main() {
     key_t sys_key = get_system_key();
     shmid = shmget(sys_key, sizeof(struct SystemData), IPC_CREAT | 0666);
