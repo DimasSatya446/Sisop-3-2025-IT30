@@ -264,6 +264,7 @@ NOTE:
 
 ---
 ## soal_2
+## soal_2
 ### Perusahaan Ekspedisi *Rush Go*
 ---
 ### Problem:
@@ -549,7 +550,23 @@ void list_all(SharedData *data) {
 Berfungsi untuk menampilkan keseluruhan pesanan dengan statusnya dengan melalui keseluruhan data pada *shared memory*.
 
 ```
+int main(int argc, char *argv[]) {
+    int shmid = shmget(SHM_KEY, sizeof(SharedData), IPC_CREAT | 0666);
+    if (shmid == -1) {
+        perror("shmget");
+        return 1;
+    }
 
+    SharedData *data = (SharedData *)shmat(shmid, NULL, 0);
+    if (data == (void *) -1) {
+        perror("shmat");
+        return 1;
+    }
+    [...]
+
+    shmdt(data);
+    return 0;
+}
 ```
 Berfungsi sebagai fungsi/program utama dalam `dispatcher.c`, dengan mekanisme sebagai berikut:
 
