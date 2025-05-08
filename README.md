@@ -14,6 +14,254 @@
 
 ## soal_1
 
+# “The Legend of Rootkids👑”
+
+## Image Client
+
+
+**Fungsi reverse**
+```c
+void reverse(char *str) {
+    int len = strlen(str);
+    for (int i = 0; i < len / 2; i++) {
+        char tmp = str[i];
+        str[i] = str[len - i - 1];
+        str[len - i - 1] = tmp;
+    }
+}
+```
+`strlen(str)` → menghitung panjang string.
+
+`for (int i = 0; i < len / 2; i++)` → iterasi setengah dari panjang string (karena kita tukar dari dua sisi).
+
+`char tmp = str[i];` → simpan sementara karakter saat ini.
+
+`str[i] = str[len - i - 1];` → tukar karakter di posisi i dengan karakter di posisi dari ujung (len - i - 1).
+
+`str[len - i - 1] = tmp;` → letakkan karakter sementara ke posisi ujung itu.
+
+---
+
+**Fungsi bytes_to_hex()**
+```c
+void bytes_to_hex(const unsigned char *data, size_t len, char *hex_out) {
+    for (size_t i = 0; i < len; i++) {
+        sprintf(hex_out + (i * 2), "%02x", data[i]);
+    }
+    hex_out[len * 2] = '\0';
+}
+```
+`data` adalah array biner (byte).
+
+`hex_out` adalah output berupa string hex.
+
+`sprintf(hex_out + (i * 2), "%02x", data[i]);`
+Ini menulis 2 karakter hex untuk tiap byte.
+
+`hex_out[len * 2] = '\0';` → null terminator untuk mengakhiri string.
+
+---
+
+**Fungsi upload_file()**
+```c
+void upload_file() {
+```
+Langkah-langkah sintaks di sini:
+
+a) Input nama file
+```c
+char filename[256];
+printf("Masukkan nama file TXT: ");
+scanf("%s", filename);
+```
+→ Baca nama file yang akan di-upload.
+
+b) Gabungkan path folder:
+```c
+char path[300];
+snprintf(path, sizeof(path), "secrets/%s", filename);
+```
+→ Menyusun path ke folder `secrets/` + nama file.
+
+c) Buka file biner:
+```c
+FILE *f = fopen(path, "rb");
+```
+→ `rb` artinya baca file dalam mode biner.
+
+d) Ambil ukuran file:
+```c
+fseek(f, 0, SEEK_END);
+long fsize = ftell(f);
+fseek(f, 0, SEEK_SET);
+```
+- `fseek()` ke akhir file.
+
+- `ftell()` mengambil ukuran file (posisi akhir).
+
+- `fseek()` kembali ke awal file.
+
+e) Alokasikan memori:
+```c
+unsigned char *binary_data = malloc(fsize);
+```
+→ Siapkan memori sebesar ukuran file untuk menyimpan data biner.
+
+f) Baca file:
+```c
+fread(binary_data, 1, fsize, f);
+```
+→ Baca seluruh file ke binary_data.
+
+g) Convert ke hex:
+```c
+char *hex_data = malloc(fsize * 2 + 1);
+bytes_to_hex(binary_data, fsize, hex_data);
+```
+→ Gunakan fungsi `bytes_to_hex()` untuk ubah biner ke hex.
+
+h) Balik hex:
+```c
+reverse(hex_data);
+```
+→ Membalik string hex tersebut.
+
+i) Socket setup:
+```c
+int sock = socket(AF_INET, SOCK_STREAM, 0);
+```
+→ Membuat TCP socket.
+
+j) Siapkan alamat server:
+```c
+struct sockaddr_in addr;
+addr.sin_family = AF_INET;
+addr.sin_port = htons(PORT);
+inet_pton(AF_INET, SERVER_IP, &addr.sin_addr);
+```
+→ Konfigurasi server: IP + port dalam format `sockaddr_in`.
+
+k) Connect ke server:
+```c
+connect(sock, (struct sockaddr*)&addr, sizeof(addr));
+```
+→ Lakukan koneksi TCP ke server.
+
+l) Susun request:
+```c
+snprintf(request, req_len, "UPLOAD %s\n%s", filename, hex_data);
+```
+→ Formatnya: `UPLOAD <filename>\n<hex_data>.`
+
+m) Kirim request:
+```c
+send(sock, request, strlen(request), 0);
+```
+→ Kirim data ke server lewat socket.
+
+n) Terima respon:
+```c
+int r = recv(sock, response, sizeof(response) - 1, 0);
+```
+→ Terima balasan dari server.
+
+o) Tutup socket:
+```c
+close(sock);
+```
+
+---
+
+**Fungsi download_file()**
+```c
+void download_file() {
+```
+Langkah-langkahnya:
+
+a) Input nama file JPEG:
+```c
+char filename[256];
+printf("Masukkan nama file JPEG: ");
+scanf("%s", filename);
+```
+b) Buat socket:
+```c
+int sock = socket(AF_INET, SOCK_STREAM, 0);
+```
+c) Siapkan alamat server dan connect:
+```c
+struct sockaddr_in addr;
+addr.sin_family = AF_INET;
+addr.sin_port = htons(PORT);
+inet_pton(AF_INET, SERVER_IP, &addr.sin_addr);
+connect(sock, (struct sockaddr*)&addr, sizeof(addr));
+```
+d) Susun request:
+```c
+snprintf(request, sizeof(request), "DOWNLOAD %s\n", filename);
+send(sock, request, strlen(request), 0);
+```
+→ Format requestnya: `DOWNLOAD <filename>\n`
+
+e) Terima respon awal:
+```c
+int ir = recv(sock, initial_response, sizeof(initial_response) - 1, 0);
+```
+Kalau respon bukan `"SUCCESS"`, download dibatalkan.
+
+f) Buka file lokal untuk tulis biner:
+```c
+FILE *out = fopen(filename, "wb");
+```
+`wb` = write biner.
+
+g) Loop untuk menerima data file:
+```c
+while ((bytes_received = recv(sock, data, sizeof(data), 0)) > 0) {
+    fwrite(data, 1, bytes_received, out);
+    total_received += bytes_received;
+}
+```
+- Terus menerima data sampai `recv()` berhenti.
+- Tulis data langsung ke file JPEG lokal.
+
+h) Cek error & tutup file/socket:
+```c
+fclose(out);
+close(sock);
+```
+
+---
+
+**Fungsi main()**
+```c
+int main() {
+```
+Isi utamanya:
+
+- Menampilkan menu secara loop.
+
+- scanf() baca pilihan user.
+
+- switch memilih aksi:
+
+    1 → jalankan `upload_file()`
+
+    2 → jalankan `download_file()`
+
+    3 → keluar program dengan `exit(0)`
+NOTE:
+
+`Socket(), connect(), send(), recv()` → fungsi socket programming khas C.
+
+`malloc(), free()` → alokasi memori manual.
+
+`fread(), fwrite()` → operasi file secara biner.
+
+`snprintf()` → string formatting aman (anti buffer overflow).
+
+`inet_pton()` → mengubah IP string ke format network.
+
 ---
 ## soal_2
 
