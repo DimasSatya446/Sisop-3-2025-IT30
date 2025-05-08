@@ -1226,6 +1226,72 @@ int main() {
         }
     }
 ```
+- `int sock = socket(AF_INET, SOCK_STREAM, 0);`
+Membuat socket TCP (SOCK_STREAM) untuk koneksi client-server.
+
+- `AF_INET: menggunakan protokol IPv4.
+if (sock < 0) { ... }`
+Mengecek apakah socket berhasil dibuat. Jika gagal, tampilkan error dan keluar.
+- `struct sockaddr_in server_addr;`
+Struktur alamat untuk koneksi ke server.
+
+- `server_addr.sin_family = AF_INET;
+server_addr.sin_port = htons(SERVER_PORT);
+inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);`
+Mengatur alamat IP dan port server (127.0.0.1:8888) dalam bentuk yang dimengerti oleh socket.
+
+- `if (connect(...) < 0) { ... }`
+Melakukan koneksi ke server. Jika gagal, socket ditutup dan program keluar.
+
+- `while (1) {
+    print_main_menu();
+    scanf("%d", &choice);
+    getchar(); // menyerap newline`
+Menampilkan menu dan menerima input angka dari user.
+
+- `getchar() `menyerap karakter newline (\n) setelah scanf.
+- `case 1:
+    const char* cmd = "SHOW_STATS";
+    send(sock, cmd, strlen(cmd), 0);
+    recv(sock, buffer, MAX_DATA, 0);
+    printf("%s\n", buffer);
+Kirim perintah "SHOW_STATS" ke server.`
+
+Server membalas dengan status pemain yang kemudian ditampilkan.
+- `case 2:
+    const char* cmd = "SHOP";
+    send(sock, cmd, strlen(cmd), 0);
+    ...
+    recv(sock, buffer, MAX_DATA, 0);
+    printf("%s\n", buffer);`
+Kirim perintah "SHOP" ke server.
+
+- Menerima dan menampilkan respon dari server (misalnya daftar senjata atau toko).
+- `case 3:
+    const char* cmd = "INVENTORY";
+    send(sock, cmd, strlen(cmd), 0);
+    ...`
+Kirim perintah "INVENTORY" ke server.
+
+- Kode recv() dan tampilan hasil kemungkinan akan ditambahkan kemudian.
+- `case 4:
+    const char* cmd = "BATTLE";
+    send(sock, cmd, strlen(cmd), 0);
+
+    while (1) {
+        ...
+    }`
+Kirim perintah "BATTLE" ke server. Masuk loop battle mode
+
+- `case 5:
+    printf("Goodbye !\n");
+    close(sock);
+    exit(0);`
+Menutup socket dan keluar dari game.
+`default:
+    printf("Invalid choice. Please try again.\n");`
+Menangani input selain 1–5. error handling
+
 c. **Status Check**
 > Melihat bahwa terdapat sebuah toko senjata, anda mengecek status diri anda dengan harapan anda masih memiliki sisa uang untuk membeli senjata. Jika opsi Show Player Stats dipilih, maka program akan menunjukan Uang yang dimiliki (Jumlah dibebaskan), senjata yang sedang digunakan, Base Damage, dan jumlah musuh yang telah dimusnahkan.
 
@@ -1244,6 +1310,16 @@ case 1: {
                 break;
             }
 ```
+
+- `const char* cmd = "SHOW_STATS";`Client menyiapkan string perintah "SHOW_STATS".
+
+- `send(sock, cmd, strlen(cmd), 0);`Mengirimkan string tersebut ke server melalui koneksi socket (sock).
+
+- `memset(buffer, 0, MAX_DATA);`Mengosongkan buffer untuk menghindari data sisa dari komunikasi sebelumnya.
+
+- `recv(sock, buffer, MAX_DATA, 0);`Menerima balasan dari server dan menyimpannya ke dalam buffer.
+
+- `printf("\n%s\n", buffer);`Menampilkan isi balasan tersebut ke layar terminal user (berisi status player).
 **Server**
 ```
 typedef struct {
@@ -1305,6 +1381,69 @@ void* handle_client(void* arg) {
 
         } else if ...
 ```
+- Sebelum server dapat merespons perintah SHOW_STATS, ia menggunakan struktur data berikut untuk menyimpan status pemain:
+`typedef struct {
+    int gold;                          // Jumlah emas yang dimiliki pemain
+    Weapon inventory[MAX_INVENTORY];   // Daftar senjata milik pemain
+    int inventory_size;                // Jumlah senjata yang dimiliki
+    Weapon equipped;                   // Senjata yang sedang digunakan
+    int base_damage;                   // Damage dasar pemain (belum termasuk senjata)
+    int kills;                         // Jumlah musuh yang dikalahkan
+} PlayerStats;`
+- Inisialisasi Default di handle_client; 
+Setiap client yang terhubung akan memiliki instance PlayerStats sendiri, diinisialisasi dengan nilai default:
+`Weapon fists = {
+    .id = 0,
+    .damage = 5,
+    .price = 0,
+};
+strcpy(fists.name, "Fists");
+PlayerStats player = {
+    .gold = 500,
+    .inventory_size = 1,
+    .base_damage = 5,
+    .kills = 0
+};
+player.inventory[0] = fists;
+player.equipped = fists; `
+- Pemain baru dimulai dengan 500 gold, satu senjata awal: Fists, dan belum punya kill.
+
+- Saat server menerima string "SHOW_STATS" dari client, ia menjalankan blok ini:
+`if (strcmp(buffer, "SHOW_STATS") == 0) {
+    char stats_response[BUFFER_SIZE];
+    snprintf(stats_response, BUFFER_SIZE,
+             "=== PLAYER STATS ===\nGold: %d | Equipped Weapon: %s | Base Damage: %d | Kills: %d\n",
+             player.gold, player.equipped.name, player.base_damage, player.kills);`
+Langkah-langkahnya:
+- Validasi Perintah
+
+- Server membandingkan string buffer dengan "SHOW_STATS".
+
+- Server membentuk string berisi:
+
+Gold pemain, 
+
+Nama senjata yang sedang digunakan, 
+
+Base damage pemain, 
+
+Jumlah kills.
+
+- Jika senjata yang digunakan memiliki efek pasif, maka informasi tambahan juga dikirim:
+` if (strlen(player.equipped.passive[0]) > 0 || strlen(player.equipped.passive[1]) > 0) {
+    strcat(stats_response, "\nPassive: ");
+    strcat(stats_response, player.equipped.passive[0]);
+    strcat(stats_response, ", ");
+    strcat(stats_response, player.equipped.passive[1]);
+}`
+Server akan menambahkan bagian "Passive: ..." ke respons jika ada efek pasif yang terisi.
+- Pengiriman Balasan
+`send(new_socket, stats_response, strlen(stats_response), 0);
+Server mengirim string stats_response ke client melalui new_socket.`
+
+d. Weapon Shop
+> Ternyata anda memiliki sisa uang dan langsung pergi ke toko senjata tersebut untuk membeli senjata. Terdapat 5 pilihan senjata di toko tersebut dan beberapa dari mereka memiliki passive yang unik. Disaat opsi Shop dipilih, program akan menunjukan senjata apa saja yang dapat dibeli beserta harga, damage, dan juga passive (jika ada). List senjata yang ada dan dapat dibeli beserta logic/command untuk membeli senjata tersebut diletakan di code shop.c/shop.h yang nanti akan dipakai oleh dungeon.c.
+
 ---
 ## soal_4
 a
